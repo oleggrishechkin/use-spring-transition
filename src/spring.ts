@@ -25,6 +25,8 @@ const createSpringSolver = ({ mass = 1, stiffness = 100, damping = 10, initialVe
 
 const normalizeSpringValue = (from: number, to: number, proportion: number) => from + (to - from) * proportion;
 
+const DEFAULT_THRESHOLD = 0.01;
+
 const spring = (onFrame: (proportion: number) => void, onEnd: () => void, options?: SpringOptions) => {
     const solver = createSpringSolver(options);
     const startTime = Date.now() / 1000;
@@ -38,7 +40,9 @@ const spring = (onFrame: (proportion: number) => void, onEnd: () => void, option
         const elapsed = Date.now() / 1000 - startTime;
         const proportion = solver(elapsed);
 
-        if (Math.abs(1 - proportion) <= (typeof options?.threshold === 'number' ? options.threshold : 0.01)) {
+        if (
+            Math.abs(1 - proportion) <= (typeof options?.threshold === 'number' ? options.threshold : DEFAULT_THRESHOLD)
+        ) {
             framesAfterTargetReached++;
         } else {
             framesAfterTargetReached = 0;

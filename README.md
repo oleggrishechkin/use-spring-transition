@@ -33,7 +33,7 @@ Looks pretty similar with `react-transition-group`, but with different naming (`
 
 Value transition has much more difference with `TransitionGroup`, mostly it looks like [useTransition](https://www.react-spring.dev/docs/components/use-transition) hook from `react-spring`
 
-## Usage
+# Usage
 
 ## `useTransitionValue`
 
@@ -211,3 +211,103 @@ const Viewer = ({ images }: { images: { id: string; url: sring; alt: string }[] 
     left: 0;
 }
 ```
+
+# API
+
+## `SpringOptions`
+
+```typescript
+type SpringOptions = {
+    mass?: number;
+    stiffness?: number;
+    damping?: number;
+    initialVelocity?: number;
+    threshold?: number;
+};
+```
+
+Defaults: 
+
+```typescript
+mass: 1;
+stiffness: 100;
+damping: 10;
+initialVelocity: 0;
+threshold: 0.01;
+```
+
+Description:
+
+- `mass, stiffness, damping, initialVelocity` - spring animation configuration
+- `threshold` - special property for ending a spring animation when spring value difference on each frame lower than `threshold` 10 times in a row*.
+
+*spring animation can generate a small difference on each frame before reach `to` value. For example, we want to animate opacity from 0 to 1. Spring animation can generate 0.991233, 0.992533, 0.993334... in a near minute before reach 1 (or never reach at all). To avoid this long useless animation we can finish animation when spring value is near the `to` value. That's why we use `threshold` property.  
+
+## `TransitionState`
+
+```typescript
+type TransitionState = 'open' | 'opening' | 'opened' | 'close' | 'closing' | 'closed';
+```
+
+## `useTransitionValue`
+
+```typescript
+const useTransitionValue = (opened: boolean, duration: number | { open: number; close: number }): TransitionState
+```
+
+Params:
+- `opened: boolean` - trigger for transition
+- `duration: number | { open: number; close: number }` - transition duration; should be equal to css `transition-duration` property; you can specify different duration for open and close transitions
+
+Returns:
+- `state: TransitionState` - state of transition;
+
+## `useTransitionValues`
+
+```typescript
+const useTransitionValues = <T>(value: T, duration: number): { value: T; state: TransitionState }[]
+```
+
+Params:
+- `opened: boolean` - trigger for transition
+- `duration: number` - transition duration; should be equal to css `transition-duration` property
+
+Returns:
+- `transitions: { value: T; state: TransitionState }[]` - array of transitions (values); you should map this array in your component.
+
+## `useSpringTransitionValue`
+
+```typescript
+const useSpringTransitionValue = (
+    opened: boolean,
+    { from, to }: { from: number; to: number },
+    options?: SpringOptions,
+): [TransitionState, number]
+```
+
+Params:
+- `opened: boolean` - trigger for transition
+- `{ from, to }: { from: number; to: number }` - values for spring animation
+- `options: SpringOptions` - configuration for spring animation
+
+Returns:
+- `[state, springValue]: [TransitionState, number]` - state of transition and spring value; you should use `springValue` as animated style property
+
+## `useSpringTransitionValues`
+
+```typescript
+const useSpringTransitionValues = <T>(
+    value: T,
+    { from, openingTo, closingTo }: { from: number; openingTo: number; closingTo: number },
+    options?: SpringOptions,
+): { value: T; springValue: number; state: TransitionState }[]
+```
+
+Params:
+- `opened: boolean` - trigger for transition
+- `{ from, openingTo, closingTo }: { from: number; openingTo: number; closingTo: number }` - values for spring animation
+- `options: SpringOptions` - configuration for spring animation
+
+Returns:
+- `transitions: { value: T; springValue: number; state: TransitionState }[]` - array of transitions (values); you should map this array in your component; you should use `springValue` as animated style property
+
