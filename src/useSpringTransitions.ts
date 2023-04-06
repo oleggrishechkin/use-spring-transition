@@ -1,46 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-    TransitionState,
-    TransitionOptions,
-    TransitionValues,
-    getOpenTransitionOptions,
-    getCloseTransitionOptions,
-    getOpeningToValue,
-    getClosingToValue,
-} from './useSpringTransition';
+import { useEffect, useRef, useState } from 'react';
+import { Stage, Options, Values, getOpenOptions, getCloseOptions, getOpenTo, getCloseTo } from './useSpringTransition';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
-import { normalizeSpringValue, spring } from './spring';
+import { normalizeSpringValue, spring, SpringOptions } from './spring';
 import { getUniqueId } from './getUniqueId';
+import { useUpdateOnRender } from './useUpdateOnRender';
 
-const useSpringTransitions = <T>(
+export const useSpringTransitions = <T>(
     value: T,
-    values?: TransitionValues | null,
-    options: TransitionOptions = {},
-): { value: T; springValue: number; state: TransitionState }[] => {
-    const normalizedValues = values || { from: 0, to: 1 };
-    const transitionIdRef = useRef('');
+    options: Options = {},
+    values: Values = { from: 0, to: 1 },
+): { value: T; stage: Stage; springValue: number }[] => {
+    const transitionIdRef = useRef<number | null>(null);
     const [inst, setState] = useState({
         transitions: [
             {
                 value,
-                springValue: getOpeningToValue(normalizedValues),
-                state: 'opened' as TransitionState,
+                stage: 'opened' as Stage,
+                springValue: getOpenTo(values),
                 _transitionId: transitionIdRef.current,
             },
         ],
     });
-    const mountedRef = useRef(false);
     const timeoutMapRef = useRef<Record<string, any>>({});
     const openCleanupsMapRef = useRef<Record<string, () => void>>({});
     const closeCleanupsMapRef = useRef<Record<string, () => void>>({});
 
-    useMemo(() => {
-        if (!mountedRef.current) {
-            mountedRef.current = true;
-
-            return;
-        }
-
+    useUpdateOnRender(() => {
         let isNew = true;
         let isChanged = false;
 
@@ -50,21 +35,21 @@ const useSpringTransitions = <T>(
             if (transition.value === value) {
                 isNew = false;
 
-                if (['close', 'closing', 'closed'].includes(transition.state)) {
+                if (['close', 'closing', 'closed'].includes(transition.stage)) {
                     isChanged = true;
                     transition._transitionId = transitionIdRef.current;
 
-                    return { ...transition, state: 'open' as TransitionState };
+                    return { ...transition, stage: 'open' as Stage };
                 }
 
                 return transition;
             }
 
-            if (['open', 'opening', 'opened'].includes(transition.state)) {
+            if (['open', 'opening', 'opened'].includes(transition.stage)) {
                 isChanged = true;
                 transition._transitionId = transitionIdRef.current;
 
-                return { ...transition, state: 'close' as TransitionState };
+                return { ...transition, stage: 'close' as Stage };
             }
 
             return transition;
@@ -74,8 +59,8 @@ const useSpringTransitions = <T>(
             isChanged = true;
             nextTransitions.push({
                 value,
-                springValue: normalizedValues.from,
-                state: 'open',
+                stage: 'open',
+                springValue: values.from,
                 _transitionId: transitionIdRef.current,
             });
         }
@@ -83,7 +68,6 @@ const useSpringTransitions = <T>(
         if (isChanged) {
             inst.transitions = nextTransitions;
         }
-
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value]);
 
@@ -100,7 +84,7 @@ const useSpringTransitions = <T>(
             !timeoutMapRef.current[transitionId] &&
             transitions.some(
                 (transition) =>
-                    ['open', 'close'].includes(transition.state) && transition._transitionId === transitionId,
+                    ['open', 'close'].includes(transition.stage) && transition._transitionId === transitionId,
             );
 
         if (isOpenClosePending) {
@@ -109,12 +93,12 @@ const useSpringTransitions = <T>(
                 setState((curr) => {
                     let isChanged = false;
                     const nextTransitions = curr.transitions.map((transition) => {
-                        if (['open', 'close'].includes(transition.state) && transition._transitionId === transitionId) {
+                        if (['open', 'close'].includes(transition.stage) && transition._transitionId === transitionId) {
                             isChanged = true;
 
                             return {
                                 ...transition,
-                                state: (transition.state === 'open' ? 'opening' : 'closing') as TransitionState,
+                                stage: (transition.stage === 'open' ? 'opening' : 'closing') as Stage,
                             };
                         }
 
@@ -133,239 +117,156 @@ const useSpringTransitions = <T>(
         const isOpeningPending =
             !openCleanupsMapRef.current[transitionId] &&
             transitions.some(
-                (transition) => transition.state === 'opening' && transition._transitionId === transitionId,
+                (transition) => transition.stage === 'opening' && transition._transitionId === transitionId,
             );
         const isClosingPending =
             !closeCleanupsMapRef.current[transitionId] &&
             transitions.some(
-                (transition) => transition.state === 'closing' && transition._transitionId === transitionId,
+                (transition) => transition.stage === 'closing' && transition._transitionId === transitionId,
             );
-        const openOptions = getOpenTransitionOptions(options);
-        const closeOptions = getCloseTransitionOptions(options);
 
-        if (isOpeningPending || isClosingPending) {
+        if (!isOpeningPending && !isClosingPending) {
+            return;
+        }
+
+        const openClose = (
+            { open, close }: { open: boolean; close: boolean },
+            openCloseOptions: SpringOptions | number,
+        ) => {
             const springValuesByValueMap = transitions.reduce((res, transition) => {
                 res.set(transition.value, transition.springValue);
 
                 return res;
             }, new Map() as Map<T, number>);
 
-            if (openOptions === closeOptions) {
-                const cleanup = spring(
-                    (proportion) => {
-                        setState((curr) => {
-                            let isChanged = false;
-                            const nextTransitions = curr.transitions.map((transition) => {
-                                if (transition.state === 'opening' && transition._transitionId === transitionId) {
-                                    isChanged = true;
+            const cleanup = spring({
+                options: openCloseOptions,
+                onFrame: (proportion) => {
+                    setState((curr) => {
+                        let isChanged = false;
+                        const nextTransitions = curr.transitions.map((transition) => {
+                            if (open && transition.stage === 'opening' && transition._transitionId === transitionId) {
+                                isChanged = true;
 
-                                    const springValue = springValuesByValueMap.get(transition.value);
+                                const springValue = springValuesByValueMap.get(transition.value);
 
-                                    return {
-                                        ...transition,
-                                        springValue: normalizeSpringValue(
-                                            typeof springValue === 'undefined' ? normalizedValues.from : springValue,
-                                            getOpeningToValue(normalizedValues),
-                                            proportion,
-                                        ),
-                                    };
-                                }
-
-                                if (transition.state === 'closing' && transition._transitionId === transitionId) {
-                                    isChanged = true;
-
-                                    const springValue = springValuesByValueMap.get(transition.value);
-
-                                    return {
-                                        ...transition,
-                                        springValue: normalizeSpringValue(
-                                            typeof springValue === 'undefined'
-                                                ? getOpeningToValue(normalizedValues)
-                                                : springValue,
-                                            getClosingToValue(normalizedValues),
-                                            proportion,
-                                        ),
-                                    };
-                                }
-
-                                return transition;
-                            });
-
-                            if (isChanged) {
-                                return { transitions: nextTransitions };
+                                return {
+                                    ...transition,
+                                    springValue: normalizeSpringValue(
+                                        typeof springValue === 'undefined' ? values.from : springValue,
+                                        getOpenTo(values),
+                                        proportion,
+                                    ),
+                                };
                             }
 
-                            return curr;
+                            if (close && transition.stage === 'closing' && transition._transitionId === transitionId) {
+                                isChanged = true;
+
+                                const springValue = springValuesByValueMap.get(transition.value);
+
+                                return {
+                                    ...transition,
+                                    springValue: normalizeSpringValue(
+                                        typeof springValue === 'undefined' ? getOpenTo(values) : springValue,
+                                        getCloseTo(values),
+                                        proportion,
+                                    ),
+                                };
+                            }
+
+                            return transition;
                         });
-                    },
-                    () => {
+
+                        if (isChanged) {
+                            return { transitions: nextTransitions };
+                        }
+
+                        return curr;
+                    });
+                },
+                onEnd: () => {
+                    if (open) {
                         delete openCleanupsMapRef.current[transitionId];
+                    }
+
+                    if (close) {
                         delete closeCleanupsMapRef.current[transitionId];
-                        setState((curr) => {
-                            let isChanged = false;
-                            const nextTransitions = curr.transitions
-                                .filter((transition) => {
-                                    if (transition.state === 'closing' && transition._transitionId === transitionId) {
-                                        isChanged = true;
+                    }
 
-                                        return false;
-                                    }
-
-                                    return true;
-                                })
-                                .map((transition) => {
-                                    if (transition.state === 'opening' && transition._transitionId === transitionId) {
-                                        isChanged = true;
-
-                                        return {
-                                            ...transition,
-                                            springValue: getOpeningToValue(normalizedValues),
-                                            state: 'opened' as TransitionState,
-                                        };
-                                    }
-
-                                    return transition;
-                                });
-
-                            if (isChanged) {
-                                return { transitions: nextTransitions };
-                            }
-
-                            return curr;
-                        });
-                    },
-                    openOptions,
-                );
-
-                openCleanupsMapRef.current[transitionId] = cleanup;
-                closeCleanupsMapRef.current[transitionId] = cleanup;
-
-                return;
-            }
-
-            if (isOpeningPending) {
-                openCleanupsMapRef.current[transitionId] = spring(
-                    (proportion) => {
-                        setState((curr) => {
-                            let isChanged = false;
-                            const nextTransitions = curr.transitions.map((transition) => {
-                                if (transition.state === 'opening' && transition._transitionId === transitionId) {
-                                    isChanged = true;
-
-                                    const springValue = springValuesByValueMap.get(transition.value);
-
-                                    return {
-                                        ...transition,
-                                        springValue: normalizeSpringValue(
-                                            typeof springValue === 'undefined' ? normalizedValues.from : springValue,
-                                            getOpeningToValue(normalizedValues),
-                                            proportion,
-                                        ),
-                                    };
-                                }
-
-                                return transition;
-                            });
-
-                            if (isChanged) {
-                                return { transitions: nextTransitions };
-                            }
-
-                            return curr;
-                        });
-                    },
-                    () => {
-                        delete openCleanupsMapRef.current[transitionId];
-                        setState((curr) => {
-                            let isChanged = false;
-                            const nextTransitions = curr.transitions.map((transition) => {
-                                if (transition.state === 'opening' && transition._transitionId === transitionId) {
-                                    isChanged = true;
-
-                                    return {
-                                        ...transition,
-                                        springValue: getOpeningToValue(normalizedValues),
-                                        state: 'opened' as TransitionState,
-                                    };
-                                }
-
-                                return transition;
-                            });
-
-                            if (isChanged) {
-                                return { transitions: nextTransitions };
-                            }
-
-                            return curr;
-                        });
-                    },
-                    openOptions,
-                );
-            }
-
-            if (isClosingPending) {
-                closeCleanupsMapRef.current[transitionId] = spring(
-                    (proportion) => {
-                        setState((curr) => {
-                            let isChanged = false;
-                            const nextTransitions = curr.transitions.map((transition) => {
-                                if (transition.state === 'closing' && transition._transitionId === transitionId) {
-                                    isChanged = true;
-
-                                    const springValue = springValuesByValueMap.get(transition.value);
-
-                                    return {
-                                        ...transition,
-                                        springValue: normalizeSpringValue(
-                                            typeof springValue === 'undefined'
-                                                ? getOpeningToValue(normalizedValues)
-                                                : springValue,
-                                            getClosingToValue(normalizedValues),
-                                            proportion,
-                                        ),
-                                    };
-                                }
-
-                                return transition;
-                            });
-
-                            if (isChanged) {
-                                return { transitions: nextTransitions };
-                            }
-
-                            return curr;
-                        });
-                    },
-                    () => {
-                        delete closeCleanupsMapRef.current[transitionId];
-                        setState((curr) => {
-                            let isChanged = false;
-                            const nextTransitions = curr.transitions.filter((transition) => {
-                                if (transition.state === 'closing' && transition._transitionId === transitionId) {
+                    setState((curr) => {
+                        let isChanged = false;
+                        const nextTransitions = curr.transitions
+                            .filter((transition) => {
+                                if (
+                                    close &&
+                                    transition.stage === 'closing' &&
+                                    transition._transitionId === transitionId
+                                ) {
                                     isChanged = true;
 
                                     return false;
                                 }
 
                                 return true;
+                            })
+                            .map((transition) => {
+                                if (
+                                    open &&
+                                    transition.stage === 'opening' &&
+                                    transition._transitionId === transitionId
+                                ) {
+                                    isChanged = true;
+
+                                    return {
+                                        ...transition,
+                                        stage: 'opened' as Stage,
+                                        springValue: getOpenTo(values),
+                                    };
+                                }
+
+                                return transition;
                             });
 
-                            if (isChanged) {
-                                return { transitions: nextTransitions };
-                            }
+                        if (isChanged) {
+                            return { transitions: nextTransitions };
+                        }
 
-                            return curr;
-                        });
-                    },
-                    closeOptions,
-                );
+                        return curr;
+                    });
+                },
+            });
+
+            if (open) {
+                openCleanupsMapRef.current[transitionId] = cleanup;
             }
+
+            if (close) {
+                closeCleanupsMapRef.current[transitionId] = cleanup;
+            }
+        };
+
+        const openOptions = getOpenOptions(options);
+        const closeOptions = getCloseOptions(options);
+
+        if (openOptions === closeOptions) {
+            openClose({ open: isOpeningPending, close: isClosingPending }, openOptions);
+
+            return;
+        }
+
+        if (isOpeningPending) {
+            openClose({ open: isOpeningPending, close: false }, openOptions);
+        }
+
+        if (isClosingPending) {
+            openClose({ open: false, close: isClosingPending }, closeOptions);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [transitions]);
     useEffect(
         () => () => {
-            transitionIdRef.current = '';
+            transitionIdRef.current = null;
             Object.keys(timeoutMapRef.current).forEach((key) => {
                 clearTimeout(timeoutMapRef.current[key]);
             });
@@ -384,5 +285,3 @@ const useSpringTransitions = <T>(
 
     return transitions;
 };
-
-export { useSpringTransitions };

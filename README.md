@@ -18,7 +18,7 @@ At this moment library exports 2 hooks:
 
 ## Basics
 
-`use-spring-transition` use same state model as `react-transition-group` - `open`, `opening`, `opened`, `close`, `closing`, `closed`.
+`use-spring-transition` use same stage model as `react-transition-group` - `open`, `opening`, `opened`, `close`, `closing`, `closed`.
 
 - `open` - when open transition stat. At this moment you want to set your element initial style before css transition applied.
 - `opening` - when transition in process. At this moment you want to set your element target style.
@@ -27,7 +27,7 @@ At this moment library exports 2 hooks:
 - `closing` - same as `opening` but for close transition.
 - `closed` - same as `opened` but for close transition. At this moment you want to unmount/hide your element.
 
-Looks pretty similar with `react-transition-group`, but with different naming (`enter` -> `open`, `enter-active` -> `opening`, `enter-done` -> `opened`). But instead of `react-transition-group` states in `use-spring-transition` don't combine like `enter enter-active`
+Looks pretty similar with `react-transition-group`, but with different naming (`enter` -> `open`, `enter-active` -> `opening`, `enter-done` -> `opened`). But instead of `react-transition-group` stages in `use-spring-transition` don't combine like `enter enter-active`
 
 Value transition has much more difference with `TransitionGroup`, mostly it looks like [useTransition](https://www.react-spring.dev/docs/components/use-transition) hook from `react-spring`
 
@@ -45,13 +45,12 @@ import styles from './Menu.module.css';
 
 const Menu = () => {
   const [opened, setOpened] = useState(false);
-  const [transitionState] = useSpringTransition(
+  const transition = useSpringTransition(
     opened,
-    null,
     500,
   );
 
-  if (transitionState === 'closed') {
+  if (transition.stage === 'closed') {
     return null;
   }
 
@@ -59,7 +58,7 @@ const Menu = () => {
     <div
       className={cx(
         styles.menu,
-        styles[transitionState],
+        styles[transition.stage],
       )}
     >
       Menu
@@ -105,7 +104,6 @@ const Viewer = ({
     useState(0);
   const transitions = useSpringTransitions(
     images[currentIndex],
-    null,
     500,
   );
 
@@ -117,7 +115,7 @@ const Viewer = ({
             <img
               className={cx(
                 styles.image,
-                styles[transition.state],
+                styles[transition.stage],
               )}
               key={transition.value.id}
               src={transition.value.url}
@@ -172,20 +170,23 @@ import styles from './Menu.module.css';
 
 const Menu = () => {
   const [opened, setOpened] = useState(false);
-  const [transitionState, height] =
-    useSpringTransition(opened, {
+  const transition = useSpringTransition(
+    opened,
+    { mass: 1, stiffness: 80, damping: 20 },
+    {
       from: 0,
       to: 500,
-    });
+    },
+  );
 
-  if (transitionState === 'closed') {
+  if (transition.stage === 'closed') {
     return null;
   }
 
   return (
     <div
       className={styles.menu}
-      style={{ height }}
+      style={{ height: transition.springValue }}
     >
       Menu
     </div>
@@ -223,7 +224,8 @@ const Viewer = ({
     useState(0);
   const transitions = useSpringTransitions(
     images[currentIndex],
-    { from: 100, openingTo: 0, closingTo: -100 },
+    { mass: 1, stiffness: 180, damping: 30 },
+    { from: 100, to: { open: 0, close: -100 } },
   );
 
   return (
@@ -234,7 +236,7 @@ const Viewer = ({
             <img
               className={cx(
                 styles.image,
-                styles[transition.state],
+                styles[transition.stage],
               )}
               style={{
                 transform: `translate3d(${transition.springValue}px, 0, 0)`,
@@ -302,10 +304,10 @@ Description:
 
 \*spring animation can generate a small difference on each frame before reach `to` value. For example, we want to animate opacity from 0 to 1. Spring animation can generate 0.991233, 0.992533, 0.993334... in a near minute before reach 1 (or never reach at all). To avoid this long useless animation we can finish animation when spring value is near the `to` value. That's why we use `threshold` property.
 
-## `TransitionState`
+## `Stage`
 
 ```typescript
-type TransitionState =
+type Stage =
   | 'open'
   | 'opening'
   | 'opened'
@@ -314,22 +316,19 @@ type TransitionState =
   | 'closed';
 ```
 
-## `TransitionValues`
+## `Values`
 
 ```typescript
-type TransitionValues =
-  | {
-      from: number;
-      openingTo: number;
-      closingTo: number;
-    }
-  | { from: number; to: number };
+type Values = {
+  from: number;
+  to: number | { open: number; close: number };
+};
 ```
 
-## `TransitionOptions`
+## `Options`
 
 ```typescript
-type TransitionOptions =
+type Options =
   | SpringOptions
   | number
   | {
@@ -343,29 +342,29 @@ type TransitionOptions =
 ```typescript
 const useSpringTransition = (
     opened: boolean,
-    values?: TransitionValues | null,
-    options: TransitionOptions = {},
-): [TransitionState, number]
+    options: Options = {},
+    values: Values = { from: 0, to: 1},
+): { stage: Stage; springValue: number; }
 ```
 
 Params:
 
 - `opened: boolean` - trigger for transition
-- `values: TransitionValues | null` - values for spring animation. You can use `{ from: number; openingTo: number; closingTo: number }` for different target animated values for open and close. If you use `null` or omit this param, default values `{ from: 0, to: 1}` will be used.
-- `options: TransitionOptions` - configuration for spring animation. You can use `{ close: SpringOptions | number; open: SpringOptions | number }` for different animation timings for open and close. If yse use `number` as options a simple css transition will be happened via timeout. If you omit this param, default options `{}` will be used (`SpringOptions` defaults).
+- `values: Values | null` - values for spring animation. You can use `{ from: number; openingTo: number; closingTo: number }` for different target animated values for open and close. If you use `null` or omit this param, default values `{ from: 0, to: 1}` will be used.
+- `options: Options` - configuration for spring animation. You can use `{ close: SpringOptions | number; open: SpringOptions | number }` for different animation timings for open and close. If yse use `number` as options a simple css transition will be happened via timeout. If you omit this param, default options `{}` will be used (`SpringOptions` defaults).
 
 Returns:
 
-- `[state, springValue]: [TransitionState, number]` - state of transition and spring value; you should use `springValue` as animated style property
+- `transition: { stage: Stage; springValue: number; }` - transition object with stage of transition and spring value; you should use `springValue` as animated style property
 
 ## `useSpringTransitions`
 
 ```typescript
 const useSpringTransitions = <T>(
     value: T,
-    values?: TransitionValues | null,
-    options: TransitionOptions = {},
-): { value: T; springValue: number; state: TransitionState }[]
+    options: Options = {},
+    values: Values = { from: 0, to: 1},
+): { value: T; stage: Stage, springValue: number; }[]
 ```
 
 Params:
@@ -376,4 +375,4 @@ Params:
 
 Returns:
 
-- `transitions: { value: T; springValue: number; state: TransitionState }[]` - array of transitions (values); you should map this array in your component; you should use `springValue` as animated style property
+- `transitions: { value: T; stage: Stage, springValue: number; }[]` - array of transitions (values); you should map this array in your component; you should use `springValue` as animated style property

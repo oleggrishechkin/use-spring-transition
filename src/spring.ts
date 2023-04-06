@@ -6,7 +6,7 @@ export type SpringOptions = {
     threshold?: number;
 };
 
-const createSpringSolver = ({
+export const createSpringSolver = ({
     mass = 1,
     stiffness = 100,
     damping = 10,
@@ -28,17 +28,30 @@ const createSpringSolver = ({
     };
 };
 
-const normalizeSpringValue = (from: number, to: number, proportion: number) => from + (to - from) * proportion;
+export const normalizeSpringValue = (from: number, to: number, proportion: number) => from + (to - from) * proportion;
 
-const spring = (onFrame: (proportion: number) => void, onEnd: () => void, options: SpringOptions | number = {}) => {
+export const spring = ({
+    options = {},
+    onFrame,
+    onEnd,
+}: {
+    options?: SpringOptions | number;
+    onFrame?: (proportion: number) => void;
+    onEnd?: () => void;
+}) => {
     if (typeof options === 'number') {
-        onFrame(1);
+        if (onFrame) {
+            onFrame(1);
+        }
 
         let timeoutId: any = null;
 
         setTimeout(() => {
             timeoutId = null;
-            onEnd();
+
+            if (onEnd) {
+                onEnd();
+            }
         }, options);
 
         return () => {
@@ -47,8 +60,8 @@ const spring = (onFrame: (proportion: number) => void, onEnd: () => void, option
         };
     }
 
-    const { threshold = 0.01 } = options;
-    const solver = createSpringSolver(options);
+    const { threshold = 0.01, ...springSolverOptions } = options;
+    const solver = createSpringSolver(springSolverOptions);
     const startTime = Date.now() / 1000;
     let frameId: any = null;
     let framesAfterTargetReached = 0;
@@ -67,13 +80,19 @@ const spring = (onFrame: (proportion: number) => void, onEnd: () => void, option
         }
 
         if (framesAfterTargetReached >= 10) {
-            onEnd();
+            if (onEnd) {
+                onEnd();
+            }
+
             frameId = null;
 
             return;
         }
 
-        onFrame(proportion);
+        if (onFrame) {
+            onFrame(proportion);
+        }
+
         frameId = window.requestAnimationFrame(step);
     };
 
@@ -84,5 +103,3 @@ const spring = (onFrame: (proportion: number) => void, onEnd: () => void, option
         frameId = null;
     };
 };
-
-export { createSpringSolver, normalizeSpringValue, spring };

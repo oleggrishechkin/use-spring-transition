@@ -1,3 +1,3 @@
-const getUniqueId = () => `${Date.now()}`;
+let count = 0;
 
-export { getUniqueId };
+export const getUniqueId = () => count++;
