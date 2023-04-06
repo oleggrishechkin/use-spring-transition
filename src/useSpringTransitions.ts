@@ -10,7 +10,7 @@ export const useSpringTransitions = <T>(
     options: Options = {},
     values: Values = { from: 0, to: 1 },
 ): { value: T; stage: Stage; springValue: number }[] => {
-    const transitionIdRef = useRef<number | null>(null);
+    const transitionIdRef = useRef(-1);
     const [inst, setState] = useState({
         transitions: [
             {
@@ -75,11 +75,6 @@ export const useSpringTransitions = <T>(
 
     useIsomorphicLayoutEffect(() => {
         const transitionId = transitionIdRef.current;
-
-        if (!transitionId) {
-            return;
-        }
-
         const isOpenClosePending =
             !timeoutMapRef.current[transitionId] &&
             transitions.some(
@@ -129,16 +124,15 @@ export const useSpringTransitions = <T>(
             return;
         }
 
+        const springValuesByValueMap = transitions.reduce((res, transition) => {
+            res.set(transition.value, transition.springValue);
+
+            return res;
+        }, new Map() as Map<T, number>);
         const openClose = (
             { open, close }: { open: boolean; close: boolean },
             openCloseOptions: SpringOptions | number,
         ) => {
-            const springValuesByValueMap = transitions.reduce((res, transition) => {
-                res.set(transition.value, transition.springValue);
-
-                return res;
-            }, new Map() as Map<T, number>);
-
             const cleanup = spring({
                 options: openCloseOptions,
                 onFrame: (proportion) => {
@@ -266,7 +260,7 @@ export const useSpringTransitions = <T>(
     }, [transitions]);
     useEffect(
         () => () => {
-            transitionIdRef.current = null;
+            transitionIdRef.current = -1;
             Object.keys(timeoutMapRef.current).forEach((key) => {
                 clearTimeout(timeoutMapRef.current[key]);
             });
