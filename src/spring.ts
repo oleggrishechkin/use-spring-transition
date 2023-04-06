@@ -6,7 +6,12 @@ export type SpringOptions = {
     threshold?: number;
 };
 
-const createSpringSolver = ({ mass = 1, stiffness = 100, damping = 10, initialVelocity = 0 }: SpringOptions = {}) => {
+const createSpringSolver = ({
+    mass = 1,
+    stiffness = 100,
+    damping = 10,
+    initialVelocity = 0,
+}: Omit<SpringOptions, 'threshold'> = {}) => {
     const m_w0 = Math.sqrt(stiffness / mass);
     const m_zeta = damping / (2 * Math.sqrt(stiffness * mass));
     const m_wd = m_zeta < 1 ? m_w0 * Math.sqrt(1 - m_zeta * m_zeta) : 0;
@@ -25,9 +30,24 @@ const createSpringSolver = ({ mass = 1, stiffness = 100, damping = 10, initialVe
 
 const normalizeSpringValue = (from: number, to: number, proportion: number) => from + (to - from) * proportion;
 
-const DEFAULT_THRESHOLD = 0.01;
+const spring = (onFrame: (proportion: number) => void, onEnd: () => void, options: SpringOptions | number = {}) => {
+    if (typeof options === 'number') {
+        onFrame(1);
 
-const spring = (onFrame: (proportion: number) => void, onEnd: () => void, options?: SpringOptions) => {
+        let timeoutId: any = null;
+
+        setTimeout(() => {
+            timeoutId = null;
+            onEnd();
+        }, options);
+
+        return () => {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        };
+    }
+
+    const { threshold = 0.01 } = options;
     const solver = createSpringSolver(options);
     const startTime = Date.now() / 1000;
     let frameId: any = null;
@@ -40,9 +60,7 @@ const spring = (onFrame: (proportion: number) => void, onEnd: () => void, option
         const elapsed = Date.now() / 1000 - startTime;
         const proportion = solver(elapsed);
 
-        if (
-            Math.abs(1 - proportion) <= (typeof options?.threshold === 'number' ? options.threshold : DEFAULT_THRESHOLD)
-        ) {
+        if (Math.abs(1 - proportion) <= threshold) {
             framesAfterTargetReached++;
         } else {
             framesAfterTargetReached = 0;

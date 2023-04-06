@@ -1,15 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
-import { TransitionState } from './useTransitionValue';
 import { SpringOptions, normalizeSpringValue, spring } from './spring';
 
-const useSpringTransitionValue = (
+export type TransitionState = 'open' | 'opening' | 'opened' | 'close' | 'closing' | 'closed';
+
+export type TransitionValues = { from: number; openingTo: number; closingTo: number } | { from: number; to: number };
+
+export type TransitionOptions =
+    | SpringOptions
+    | number
+    | { close: SpringOptions | number; open: SpringOptions | number };
+
+const getOpenTransitionOptions = (options: TransitionOptions) =>
+    typeof options === 'number' || !('open' in options) ? options : options.open;
+
+const getCloseTransitionOptions = (options: TransitionOptions) =>
+    typeof options === 'number' || !('close' in options) ? options : options.close;
+
+const getOpeningToValue = (values: TransitionValues) => ('to' in values ? values.to : values.openingTo);
+
+const getClosingToValue = (values: TransitionValues) => ('to' in values ? values.from : values.closingTo);
+
+const useSpringTransition = (
     opened: boolean,
-    { from, to }: { from: number; to: number },
-    options?: SpringOptions,
+    values?: TransitionValues | null,
+    options: TransitionOptions = {},
 ): [TransitionState, number] => {
+    const normalizedValues = values || { from: 0, to: 1 };
     const [inst, setState] = useState<{ springValue: number; state: TransitionState }>({
-        springValue: opened ? to : from,
+        springValue: opened ? getOpeningToValue(normalizedValues) : normalizedValues.from,
         state: opened ? 'opened' : 'closed',
     });
     const timeoutIdRef = useRef<any>(null);
@@ -42,27 +61,33 @@ const useSpringTransitionValue = (
             case 'open': {
                 timeoutIdRef.current = setTimeout(() => {
                     timeoutIdRef.current = null;
-                    setState((curr) => ({ ...curr, state: 'opening' }));
+                    setState((curr) => ({ ...curr, state: 'opening', springValue: normalizedValues.from }));
                 });
 
-                break;
+                return;
             }
             case 'opening': {
+                const openOptions = getOpenTransitionOptions(options);
+
                 cleanupRef.current = spring(
                     (proportion) => {
                         setState((curr) => ({
                             ...curr,
-                            springValue: normalizeSpringValue(springValue, to, proportion),
+                            springValue: normalizeSpringValue(
+                                springValue,
+                                getOpeningToValue(normalizedValues),
+                                proportion,
+                            ),
                         }));
                     },
                     () => {
                         cleanupRef.current = null;
-                        setState({ state: 'opened', springValue: to });
+                        setState({ state: 'opened', springValue: getOpeningToValue(normalizedValues) });
                     },
-                    options,
+                    openOptions,
                 );
 
-                break;
+                return;
             }
             case 'close': {
                 timeoutIdRef.current = setTimeout(() => {
@@ -70,24 +95,30 @@ const useSpringTransitionValue = (
                     setState((curr) => ({ ...curr, state: 'closing' }));
                 });
 
-                break;
+                return;
             }
             case 'closing': {
+                const closeOptions = getCloseTransitionOptions(options);
+
                 cleanupRef.current = spring(
                     (proportion) => {
                         setState((curr) => ({
                             ...curr,
-                            springValue: normalizeSpringValue(springValue, from, proportion),
+                            springValue: normalizeSpringValue(
+                                springValue,
+                                getClosingToValue(normalizedValues),
+                                proportion,
+                            ),
                         }));
                     },
                     () => {
                         cleanupRef.current = null;
-                        setState({ state: 'closed', springValue: from });
+                        setState({ state: 'closed', springValue: normalizedValues.from });
                     },
-                    options,
+                    closeOptions,
                 );
 
-                break;
+                return;
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,4 +139,10 @@ const useSpringTransitionValue = (
     return [state, springValue];
 };
 
-export { useSpringTransitionValue, spring, normalizeSpringValue };
+export {
+    useSpringTransition,
+    getOpenTransitionOptions,
+    getCloseTransitionOptions,
+    getOpeningToValue,
+    getClosingToValue,
+};

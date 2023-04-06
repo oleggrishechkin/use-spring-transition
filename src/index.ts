@@ -1,5 +1,3 @@
-export { SpringOptions } from './spring';
-export { TransitionState, useTransitionValue } from './useTransitionValue';
-export { useTransitionValues } from './useTransitionValues';
-export { useSpringTransitionValue } from './useSpringTransitionValue';
-export { useSpringTransitionValues } from './useSpringTransitionValues';
+export { SpringOptions, normalizeSpringValue } from './spring';
+export { TransitionState, TransitionValues, TransitionOptions, useSpringTransition } from './useSpringTransition';
+export { useSpringTransitions } from './useSpringTransitions';
