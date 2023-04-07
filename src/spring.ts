@@ -40,21 +40,28 @@ export const spring = ({
     onEnd?: () => void;
 }) => {
     if (typeof options === 'number') {
-        if (onFrame) {
-            onFrame(1);
-        }
-
         let timeoutId: any = null;
+        let frameId: any = null;
 
-        setTimeout(() => {
-            timeoutId = null;
+        frameId = window.requestAnimationFrame(() => {
+            frameId = null;
 
-            if (onEnd) {
-                onEnd();
+            if (onFrame) {
+                onFrame(1);
             }
-        }, options);
+
+            timeoutId = setTimeout(() => {
+                timeoutId = null;
+
+                if (onEnd) {
+                    onEnd();
+                }
+            }, options);
+        });
 
         return () => {
+            cancelAnimationFrame(frameId);
+            frameId = null;
             clearTimeout(timeoutId);
             timeoutId = null;
         };

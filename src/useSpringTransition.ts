@@ -1,9 +1,18 @@
-import { useCallback, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 import { SpringOptions, normalizeSpringValue, spring } from './spring';
-import { useUpdateOnRender } from './useUpdateOnRender';
 
-export type Stage = 'open' | 'opening' | 'opened' | 'close' | 'closing' | 'closed';
+export const STAGES = {
+    OPEN: 'open',
+    OPENING: 'opening',
+    OPENED: 'opened',
+    CLOSE: 'close',
+    CLOSING: 'closing',
+    CLOSED: 'closed',
+} as const;
+
+export type Stage = (typeof STAGES)[keyof typeof STAGES];
 
 export type Values = { from: number; to: number | { open: number; close: number } };
 
@@ -25,24 +34,18 @@ export const useSpringTransition = (
     values: Values = { from: 0, to: 1 },
 ): { stage: Stage; springValue: number } => {
     const [inst, setState] = useState<{ stage: Stage; springValue: number }>({
-        stage: opened ? 'opened' : 'closed',
+        stage: opened ? STAGES.OPENED : STAGES.CLOSED,
         springValue: opened ? getOpenTo(values) : values.from,
     });
-    const timeoutIdRef = useRef<any>(null);
-    const cleanupRef = useRef<(() => void) | null>(null);
-    const cleanup = useCallback(() => {
-        if (timeoutIdRef.current) {
-            clearTimeout(timeoutIdRef.current);
+    const cleanupRef = useRef(() => {});
+
+    useMemo(() => {
+        if ((inst.stage === STAGES.OPENED && opened) || (inst.stage === STAGES.CLOSED && !opened)) {
+            return;
         }
 
-        if (cleanupRef.current) {
-            cleanupRef.current();
-        }
-    }, []);
-
-    useUpdateOnRender(() => {
-        cleanup();
-        inst.stage = opened ? 'open' : 'close';
+        cleanupRef.current();
+        inst.stage = opened ? STAGES.OPEN : STAGES.CLOSE;
 
         if (opened) {
             inst.springValue = values.from;
@@ -54,61 +57,37 @@ export const useSpringTransition = (
 
     useIsomorphicLayoutEffect(() => {
         switch (stage) {
-            case 'open': {
-                timeoutIdRef.current = setTimeout(() => {
-                    timeoutIdRef.current = null;
-                    setState((curr) => ({ stage: 'opening', springValue: curr.springValue }));
-                });
-
-                break;
-            }
-            case 'opening': {
+            case STAGES.OPEN: {
                 cleanupRef.current = spring({
                     options: getOpenOptions(options),
-                    onFrame: (proportion) => {
-                        setState(() => ({
-                            stage: 'opening',
+                    onFrame: (proportion) =>
+                        setState({
+                            stage: STAGES.OPENING,
                             springValue: normalizeSpringValue(springValue, getOpenTo(values), proportion),
-                        }));
-                    },
-                    onEnd: () => {
-                        cleanupRef.current = null;
-                        setState({ stage: 'opened', springValue: getOpenTo(values) });
-                    },
+                        }),
+                    onEnd: () => setState({ stage: STAGES.OPENED, springValue: getOpenTo(values) }),
                 });
 
                 break;
             }
-            case 'close': {
-                timeoutIdRef.current = setTimeout(() => {
-                    timeoutIdRef.current = null;
-                    setState((curr) => ({ stage: 'closing', springValue: curr.springValue }));
-                });
-
-                break;
-            }
-            case 'closing': {
+            case STAGES.CLOSE: {
                 cleanupRef.current = spring({
                     options: getCloseOptions(options),
-                    onFrame: (proportion) => {
-                        setState((curr) => ({
-                            ...curr,
+                    onFrame: (proportion) =>
+                        setState({
+                            stage: STAGES.CLOSING,
                             springValue: normalizeSpringValue(springValue, getCloseTo(values), proportion),
-                        }));
-                    },
-                    onEnd: () => {
-                        cleanupRef.current = null;
-                        setState({ stage: 'closed', springValue: getCloseTo(values) });
-                    },
+                        }),
+                    onEnd: () => setState({ stage: STAGES.CLOSED, springValue: getCloseTo(values) }),
                 });
 
                 break;
             }
         }
-
-        return cleanup;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [stage]);
+
+    useEffect(() => () => cleanupRef.current(), []);
 
     return { stage, springValue };
 };

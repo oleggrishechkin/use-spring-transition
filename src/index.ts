@@ -1,3 +1,4 @@
-export { SpringOptions } from './spring';
-export { Stage, Values, Options, useSpringTransition } from './useSpringTransition';
+export type { SpringOptions } from './spring';
+export type { Stage, Values, Options } from './useSpringTransition';
+export { STAGES, useSpringTransition } from './useSpringTransition';
 export { useSpringTransitions } from './useSpringTransitions';
