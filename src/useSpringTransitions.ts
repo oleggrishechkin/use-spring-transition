@@ -13,6 +13,14 @@ import {
 import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 import { normalizeSpringValue, spring } from './spring';
 
+type Transition<T> = {
+    value: T;
+    stage: Stage;
+    springValue: number;
+    _transitionId: number;
+    _prevSpringValue: number | null;
+};
+
 export const useSpringTransitions = <T>(
     value: T,
     options: Options = {},
@@ -21,45 +29,67 @@ export const useSpringTransitions = <T>(
     const counterRef = useRef(0);
     const transitionIdRef = useRef(-1);
     const [inst, setState] = useState<{
-        transitions: { value: T; stage: Stage; springValue: number; _transitionId: number }[];
-    }>({
+        transitions: Transition<T>[];
+    }>(() => ({
         transitions: [
             {
                 value,
                 stage: STAGES.OPENED,
                 springValue: getOpenTo(values),
                 _transitionId: transitionIdRef.current,
+                _prevSpringValue: null,
             },
         ],
-    });
+    }));
     const cleanupsMapRef = useRef<Record<string, () => void>>({});
 
     useMemo(() => {
         const nextTransitionId = counterRef.current++;
         let isNew = true;
         let isChanged = false;
+        const nextTransitions: Transition<T>[] = [];
 
-        const nextTransitions = inst.transitions.map((transition) => {
+        for (const transition of inst.transitions) {
             if (transition.value === value) {
                 isNew = false;
 
-                if (([STAGES.CLOSE, STAGES.CLOSING, STAGES.CLOSED] as Stage[]).includes(transition.stage)) {
-                    isChanged = true;
+                switch (transition.stage) {
+                    case STAGES.CLOSE:
+                    case STAGES.CLOSING:
+                    case STAGES.CLOSED: {
+                        isChanged = true;
 
-                    return { ...transition, _transitionId: nextTransitionId, stage: STAGES.OPEN };
+                        nextTransitions.push({
+                            ...transition,
+                            stage: STAGES.OPEN,
+                            _transitionId: nextTransitionId,
+                            _prevSpringValue: transition.springValue,
+                        });
+
+                        continue;
+                    }
                 }
+            } else {
+                switch (transition.stage) {
+                    case STAGES.OPEN:
+                    case STAGES.OPENING:
+                    case STAGES.OPENED: {
+                        isChanged = true;
 
-                return transition;
+                        nextTransitions.push({
+                            ...transition,
+                            stage: STAGES.CLOSE,
+                            _transitionId: nextTransitionId,
+                            _prevSpringValue: transition.springValue,
+                        });
+
+                        continue;
+                    }
+                }
             }
 
-            if (([STAGES.OPEN, STAGES.OPENING, STAGES.OPENED] as Stage[]).includes(transition.stage)) {
-                isChanged = true;
-
-                return { ...transition, _transitionId: nextTransitionId, stage: STAGES.CLOSE };
-            }
-
-            return transition;
-        });
+            nextTransitions.push(transition);
+        }
 
         if (isNew) {
             isChanged = true;
@@ -68,6 +98,7 @@ export const useSpringTransitions = <T>(
                 stage: STAGES.OPEN,
                 springValue: values.from,
                 _transitionId: nextTransitionId,
+                _prevSpringValue: null,
             });
         }
 
@@ -86,11 +117,6 @@ export const useSpringTransitions = <T>(
             return;
         }
 
-        const springValuesByValueMap = transitions.reduce((res, transition) => {
-            res.set(transition.value, transition.springValue);
-
-            return res;
-        }, new Map() as Map<T, number>);
         const openOptions = getOpenOptions(options);
         const closeOptions = getCloseOptions(options);
         const transitionsData =
@@ -107,49 +133,54 @@ export const useSpringTransitions = <T>(
                 onFrame: (proportion) => {
                     setState((curr) => {
                         let isChanged = false;
-                        const nextTransitions = curr.transitions.map((transition) => {
-                            if (
-                                data.isOpen &&
-                                transition._transitionId === transitionId &&
-                                ([STAGES.OPEN, STAGES.OPENING] as Stage[]).includes(transition.stage)
-                            ) {
-                                isChanged = true;
+                        const nextTransitions: Transition<T>[] = [];
 
-                                const springValue = springValuesByValueMap.get(transition.value);
+                        for (const transition of curr.transitions) {
+                            if (transition._transitionId === transitionId) {
+                                switch (transition.stage) {
+                                    case STAGES.OPEN:
+                                    case STAGES.OPENING: {
+                                        if (!data.isOpen) {
+                                            break;
+                                        }
 
-                                return {
-                                    ...transition,
-                                    stage: STAGES.OPENING,
-                                    springValue: normalizeSpringValue(
-                                        springValue ?? values.from,
-                                        getOpenTo(values),
-                                        proportion,
-                                    ),
-                                };
+                                        isChanged = true;
+                                        nextTransitions.push({
+                                            ...transition,
+                                            stage: STAGES.OPENING,
+                                            springValue: normalizeSpringValue(
+                                                transition._prevSpringValue ?? values.from,
+                                                getOpenTo(values),
+                                                proportion,
+                                            ),
+                                        });
+
+                                        continue;
+                                    }
+                                    case STAGES.CLOSE:
+                                    case STAGES.CLOSING: {
+                                        if (!data.isClose) {
+                                            break;
+                                        }
+
+                                        isChanged = true;
+                                        nextTransitions.push({
+                                            ...transition,
+                                            stage: STAGES.CLOSING,
+                                            springValue: normalizeSpringValue(
+                                                transition._prevSpringValue ?? getOpenTo(values),
+                                                getCloseTo(values),
+                                                proportion,
+                                            ),
+                                        });
+
+                                        continue;
+                                    }
+                                }
                             }
 
-                            if (
-                                data.isClose &&
-                                transition._transitionId === transitionId &&
-                                ([STAGES.CLOSE, STAGES.CLOSING] as Stage[]).includes(transition.stage)
-                            ) {
-                                isChanged = true;
-
-                                const springValue = springValuesByValueMap.get(transition.value);
-
-                                return {
-                                    ...transition,
-                                    stage: STAGES.CLOSING,
-                                    springValue: normalizeSpringValue(
-                                        springValue ?? getOpenTo(values),
-                                        getCloseTo(values),
-                                        proportion,
-                                    ),
-                                };
-                            }
-
-                            return transition;
-                        });
+                            nextTransitions.push(transition);
+                        }
 
                         if (isChanged) {
                             return { transitions: nextTransitions };
@@ -163,32 +194,38 @@ export const useSpringTransitions = <T>(
 
                     setState((curr) => {
                         let isChanged = false;
-                        const nextTransitions: typeof curr.transitions = [];
+                        const nextTransitions: Transition<T>[] = [];
 
                         for (const transition of curr.transitions) {
-                            if (
-                                data.isOpen &&
-                                transition._transitionId === transitionId &&
-                                ([STAGES.OPEN, STAGES.OPENING] as Stage[]).includes(transition.stage)
-                            ) {
-                                isChanged = true;
-                                nextTransitions.push({
-                                    ...transition,
-                                    stage: STAGES.OPENED,
-                                    springValue: getOpenTo(values),
-                                });
+                            if (transition._transitionId === transitionId) {
+                                switch (transition.stage) {
+                                    case STAGES.OPEN:
+                                    case STAGES.OPENING: {
+                                        if (!data.isOpen) {
+                                            break;
+                                        }
 
-                                continue;
-                            }
+                                        isChanged = true;
+                                        nextTransitions.push({
+                                            ...transition,
+                                            stage: STAGES.OPENED,
+                                            springValue: getOpenTo(values),
+                                            _prevSpringValue: null,
+                                        });
 
-                            if (
-                                data.isClose &&
-                                transition._transitionId === transitionId &&
-                                ([STAGES.CLOSE, STAGES.CLOSING] as Stage[]).includes(transition.stage)
-                            ) {
-                                isChanged = true;
+                                        continue;
+                                    }
+                                    case STAGES.CLOSE:
+                                    case STAGES.CLOSING: {
+                                        if (!data.isClose) {
+                                            break;
+                                        }
 
-                                continue;
+                                        isChanged = true;
+
+                                        continue;
+                                    }
+                                }
                             }
 
                             nextTransitions.push(transition);
@@ -208,9 +245,13 @@ export const useSpringTransitions = <T>(
     useEffect(
         () => () => {
             transitionIdRef.current = -1;
-            Object.keys(cleanupsMapRef.current).forEach((key) => {
-                cleanupsMapRef.current[key]();
-            });
+
+            for (const key in cleanupsMapRef.current) {
+                if (cleanupsMapRef.current.hasOwnProperty(key)) {
+                    cleanupsMapRef.current[key]();
+                }
+            }
+
             cleanupsMapRef.current = {};
         },
         [],
