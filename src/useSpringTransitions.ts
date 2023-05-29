@@ -21,38 +21,48 @@ type Transition<T> = {
     _prevSpringValue: number | null;
 };
 
+const defaultGetKey = <T>(item: T) => item;
+
 export const useSpringTransitions = <T>(
-    value: T,
+    value: T[],
     options: Options = {},
     values: Values = { from: 0, to: 1 },
+    hookOptions?: {
+        getKey?: (item: T) => any;
+    },
 ): { value: T; stage: Stage; springValue: number }[] => {
     const counterRef = useRef(0);
     const transitionIdRef = useRef(-1);
     const [inst, setState] = useState<{
         transitions: Transition<T>[];
     }>(() => ({
-        transitions: [
-            {
-                value,
-                stage: STAGES.OPENED,
-                springValue: getOpenTo(values),
-                _transitionId: transitionIdRef.current,
-                _prevSpringValue: null,
-            },
-        ],
+        transitions: value.map((item) => ({
+            value: item,
+            stage: STAGES.OPENED,
+            springValue: getOpenTo(values),
+            _transitionId: transitionIdRef.current,
+            _prevSpringValue: null,
+        })),
     }));
     const cleanupsMapRef = useRef<Record<string, () => void>>({});
 
     useMemo(() => {
         const nextTransitionId = counterRef.current++;
-        let isNew = true;
         let isChanged = false;
         const nextTransitions: Transition<T>[] = [];
+        const valueMap = new Map<any, T>();
+
+        for (const item of value) {
+            valueMap.set((hookOptions?.getKey || defaultGetKey)(item), item);
+        }
 
         for (const transition of inst.transitions) {
-            if (transition.value === value) {
-                isNew = false;
+            const key = (hookOptions?.getKey || defaultGetKey)(transition.value);
+            const isExist = valueMap.has(key);
 
+            valueMap.delete(key);
+
+            if (isExist) {
                 switch (transition.stage) {
                     case STAGES.CLOSE:
                     case STAGES.CLOSING:
@@ -91,15 +101,17 @@ export const useSpringTransitions = <T>(
             nextTransitions.push(transition);
         }
 
-        if (isNew) {
-            isChanged = true;
-            nextTransitions.push({
-                value,
-                stage: STAGES.OPEN,
-                springValue: values.from,
-                _transitionId: nextTransitionId,
-                _prevSpringValue: null,
-            });
+        if (valueMap.size) {
+            for (const [, item] of valueMap) {
+                isChanged = true;
+                nextTransitions.push({
+                    value: item,
+                    stage: STAGES.OPEN,
+                    springValue: values.from,
+                    _transitionId: nextTransitionId,
+                    _prevSpringValue: null,
+                });
+            }
         }
 
         if (isChanged) {

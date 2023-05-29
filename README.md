@@ -103,7 +103,7 @@ const Viewer = ({
   const [currentIndex, setCurrentIndex] =
     useState(0);
   const transitions = useSpringTransitions(
-    images[currentIndex],
+    [images[currentIndex]],
     500,
   );
 
@@ -223,7 +223,7 @@ const Viewer = ({
   const [currentIndex, setCurrentIndex] =
     useState(0);
   const transitions = useSpringTransitions(
-    images[currentIndex],
+    [images[currentIndex]],
     { mass: 1, stiffness: 180, damping: 30 },
     { from: 100, to: { open: 0, close: -100 } },
   );
@@ -361,9 +361,12 @@ Returns:
 
 ```typescript
 const useSpringTransitions = <T>(
-    value: T,
+    value: T[],
     options: Options = {},
     values: Values = { from: 0, to: 1},
+    hookOptions?: {
+        getKey?: (item: T) => any;
+    },
 ): { value: T; stage: Stage, springValue: number; }[]
 ```
 
@@ -372,6 +375,7 @@ Params:
 - `opened: boolean` - trigger for transition
 - `{ from, openingTo, closingTo }: { from: number; openingTo: number; closingTo: number }` - values for spring animation
 - `options: SpringOptions` - configuration for spring animation
+- `hookOptions?: { getKey?: (item: T) => any; }` - `getKey` - is a unique key getter for item (`(item) => item` by default)
 
 Returns:
 
