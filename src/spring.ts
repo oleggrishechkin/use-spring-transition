@@ -1,10 +1,10 @@
-export type SpringOptions = {
+export interface SpringOptions {
     mass?: number;
     stiffness?: number;
     damping?: number;
     initialVelocity?: number;
     threshold?: number;
-};
+}
 
 export const createSpringSolver = ({
     mass = 1,
@@ -35,38 +35,10 @@ export const spring = ({
     onFrame,
     onEnd,
 }: {
-    options?: SpringOptions | number;
+    options?: SpringOptions;
     onFrame?: (proportion: number) => void;
     onEnd?: () => void;
 }) => {
-    if (typeof options === 'number') {
-        let timeoutId: any = null;
-        let frameId: any = null;
-
-        frameId = window.requestAnimationFrame(() => {
-            frameId = null;
-
-            if (onFrame) {
-                onFrame(1);
-            }
-
-            timeoutId = setTimeout(() => {
-                timeoutId = null;
-
-                if (onEnd) {
-                    onEnd();
-                }
-            }, options);
-        });
-
-        return () => {
-            cancelAnimationFrame(frameId);
-            frameId = null;
-            clearTimeout(timeoutId);
-            timeoutId = null;
-        };
-    }
-
     const { threshold = 0.01, ...springSolverOptions } = options;
     const solver = createSpringSolver(springSolverOptions);
     const startTime = Date.now() / 1000;
