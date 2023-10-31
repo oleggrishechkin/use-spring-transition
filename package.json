@@ -68,8 +68,5 @@
     "prettier": "configs-og/prettier.config.js",
     "lint-staged": {
         "*.(js|jsx|ts|tsx)": "eslint --quiet"
-    },
-    "dependencies": {
-        "use-spring-transition": "^0.1.0"
     }
 }
