@@ -1,7 +1,7 @@
 {
   "name": "use-spring-transition",
   "sideEffects": false,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Hooks for spring transition",
   "keywords": [
     "react",
