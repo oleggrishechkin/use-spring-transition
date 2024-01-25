@@ -114,6 +114,8 @@ const useSpringTransitions = <T>(
             if (isExist) {
                 const item = valueMap.get(key)!;
 
+                valueMap.delete(key);
+
                 switch (transition.stage) {
                     case STAGES.CLOSE:
                     case STAGES.CLOSING:
@@ -165,7 +167,6 @@ const useSpringTransitions = <T>(
             }
 
             nextTransitions.push(transition);
-            valueMap.delete(key);
         }
 
         if (valueMap.size) {
